@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PhotoFrame Control Panel</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1 style="display: flex; align-items: center; gap: 12px;">
+                <img src="favicon.svg" alt="PhotoFrame" width="48" height="48">
+                <span>PhotoFrame Control Panel</span>
+            </h1>
+            <div id="batteryStatus" class="battery-status"></div>
+        </header>
+
+        <section class="card">
+            <h2>Image Gallery</h2>
+            <div id="displayStatus" class="display-status" style="display: none;">
+                <div class="spinner"></div>
+                <p>Updating display... This may take up to 40 seconds</p>
+            </div>
+            <div id="imageList" class="image-grid">
+                <p class="loading">Loading images...</p>
+            </div>
+        </section>
+
+        <section class="card">
+            <h2>Upload New Image</h2>
+            <form id="uploadForm">
+                <div class="upload-area">
+                    <input type="file" id="fileInput" accept=".jpg,.jpeg" required>
+                    <label for="fileInput">
+                        <span>📁 Choose JPG Image</span>
+                    </label>
+                    <div id="fileName"></div>
+                </div>
+                <div id="uploadStatus"></div>
+            </form>
+        </section>
+
+        <section class="card">
+            <h2>Auto-Rotate Settings</h2>
+            <form id="configForm">
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="autoRotate">
+                        Enable Auto-Rotate
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label for="rotateInterval">Rotation Interval (seconds):</label>
+                    <input type="number" id="rotateInterval" min="10" max="3600" value="60">
+                </div>
+                <div class="form-group">
+                    <label for="brightnessFstop">Brightness Adjustment (f-stops):</label>
+                    <input type="number" id="brightnessFstop" min="-2" max="2" step="0.1" value="0.3">
+                    <small>Adjust brightness for e-paper display (-2 to +2 f-stops)</small>
+                </div>
+                <div class="form-group">
+                    <label for="contrast">Contrast:</label>
+                    <input type="number" id="contrast" min="0.5" max="2.0" step="0.1" value="1.2">
+                    <small>Adjust contrast for e-paper display (1.0 = normal, >1.0 = more contrast)</small>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+                <div id="configStatus"></div>
+            </form>
+        </section>
+
+        <footer>
+            <p>ESP32-S3 PhotoFrame v1.0</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
