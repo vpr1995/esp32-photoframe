@@ -237,7 +237,7 @@
                 <h3>Flash Firmware</h3>
                 <div id="version-info" class="loading">Loading latest version...</div>
                 <br>
-                <esp-web-install-button id="install-button">
+                <esp-web-install-button manifest="./manifest.json">
                     <button slot="activate">Connect & Flash</button>
                 </esp-web-install-button>
             </div>
@@ -272,7 +272,7 @@
     </div>
 
     <script>
-        // Fetch the latest release info from GitHub API
+        // Fetch the latest release info from GitHub API to display version
         async function getLatestRelease() {
             try {
                 const response = await fetch('https://api.github.com/repos/aitjcize/esp32-photoframe/releases/latest');
@@ -282,47 +282,11 @@
                 const versionInfo = document.getElementById('version-info');
                 versionInfo.textContent = `Latest Version: ${data.tag_name} (${new Date(data.published_at).toLocaleDateString()})`;
                 versionInfo.classList.remove('loading');
-                
-                // Find the merged firmware asset
-                const mergedFirmware = data.assets.find(asset => 
-                    asset.name === 'photoframe-firmware-merged.bin'
-                );
-                
-                if (mergedFirmware) {
-                    // Create manifest for ESP Web Tools
-                    const manifest = {
-                        name: "ESP32 PhotoFrame",
-                        version: data.tag_name,
-                        home_assistant_domain: "esphome",
-                        new_install_prompt_erase: true,
-                        builds: [
-                            {
-                                chipFamily: "ESP32-S3",
-                                parts: [
-                                    {
-                                        path: mergedFirmware.browser_download_url,
-                                        offset: 0
-                                    }
-                                ]
-                            }
-                        ]
-                    };
-                    
-                    // Convert manifest to blob URL
-                    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-                    const manifestUrl = URL.createObjectURL(manifestBlob);
-                    
-                    // Set the manifest URL on the install button
-                    const installButton = document.getElementById('install-button');
-                    installButton.setAttribute('manifest', manifestUrl);
-                } else {
-                    throw new Error('Merged firmware not found in release assets');
-                }
             } catch (error) {
                 console.error('Error fetching release:', error);
                 const versionInfo = document.getElementById('version-info');
-                versionInfo.textContent = 'Unable to fetch latest version. Please try manual download.';
-                versionInfo.style.color = '#dc3545';
+                versionInfo.textContent = 'Version: 1.0.0';
+                versionInfo.classList.remove('loading');
             }
         }
         

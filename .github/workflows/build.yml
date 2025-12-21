@@ -114,6 +114,45 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     
+    - name: Download firmware artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: photoframe-firmware
+        path: firmware
+    
+    - name: Copy firmware to docs and generate manifest
+      run: |
+        # Copy merged firmware to docs for GitHub Pages hosting
+        cp firmware/photoframe-firmware-merged.bin docs/
+        
+        # Get version from tag or use 'latest'
+        if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/}"
+        else
+          VERSION="latest"
+        fi
+        
+        # Generate manifest.json dynamically
+        cat > docs/manifest.json << EOF
+        {
+          "name": "ESP32 PhotoFrame",
+          "version": "${VERSION}",
+          "home_assistant_domain": "esphome",
+          "new_install_prompt_erase": true,
+          "builds": [
+            {
+              "chipFamily": "ESP32-S3",
+              "parts": [
+                {
+                  "path": "photoframe-firmware-merged.bin",
+                  "offset": 0
+                }
+              ]
+            }
+          ]
+        }
+        EOF
+    
     - name: Setup Pages
       uses: actions/configure-pages@v4
     
