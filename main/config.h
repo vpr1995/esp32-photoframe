@@ -20,7 +20,7 @@
 #define DISPLAY_HEIGHT 480
 
 #define AUTO_SLEEP_TIMEOUT_SEC 120
-#define IMAGE_ROTATE_INTERVAL_SEC 60
+#define IMAGE_ROTATE_INTERVAL_SEC 3600
 #define DEFAULT_BRIGHTNESS_FSTOP 0.3  // Default brightness adjustment in f-stops
 #define DEFAULT_CONTRAST 1.3          // Default contrast multiplier (1.0 = no change)
 

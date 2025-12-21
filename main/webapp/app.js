@@ -354,7 +354,7 @@ async function loadConfig() {
         const data = await response.json();
         
         document.getElementById('autoRotate').checked = data.auto_rotate || false;
-        document.getElementById('rotateInterval').value = data.rotate_interval || 60;
+        document.getElementById('rotateInterval').value = data.rotate_interval || 3600;
         document.getElementById('brightnessFstop').value = (data.brightness_fstop !== undefined ? data.brightness_fstop : 0.3).toFixed(2);
         document.getElementById('contrast').value = (data.contrast !== undefined ? data.contrast : 1.2).toFixed(2);
     } catch (error) {
