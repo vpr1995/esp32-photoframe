@@ -216,9 +216,9 @@ let originalImageData = null; // Store original unprocessed image data
 let currentParams = {
     strength: 0.9,
     shadowBoost: 0.0,
-    highlightCompress: 1.7,
+    highlightCompress: 1.5,
     midpoint: 0.5,
-    saturation: 1.2,
+    saturation: 1.5,
     colorMethod: 'rgb',  // 'rgb' or 'lab'
     renderMeasured: true,  // true = measured (darker) colors matching e-paper display
     processingMode: 'enhanced'  // 'stock' (Waveshare original) or 'enhanced' (our algorithm with S-curve)
@@ -277,6 +277,16 @@ uploadArea.addEventListener('drop', async (e) => {
             
             // Store the file and show preview
             currentImageFile = file;
+            
+            // Hide upload area, show preview area
+            document.getElementById('uploadArea').style.display = 'none';
+            document.getElementById('previewArea').style.display = 'block';
+            
+            // Ensure controls and buttons are visible
+            document.querySelector('.button-group').style.display = 'flex';
+            document.querySelector('.controls-grid').style.display = 'grid';
+            document.getElementById('uploadProgress').style.display = 'none';
+            
             await loadImagePreview(file);
         } else {
             alert('Please drop a JPG/JPEG image file');
@@ -617,9 +627,9 @@ document.getElementById('resetParams').addEventListener('click', () => {
     currentParams = {
         strength: 0.9,
         shadowBoost: 0.0,
-        highlightCompress: 1.7,
+        highlightCompress: 1.5,
         midpoint: 0.5,
-        saturation: 1.2,
+        saturation: 1.5,
         colorMethod: 'rgb',
         renderMeasured: true,
         processingMode: 'enhanced'
@@ -630,11 +640,11 @@ document.getElementById('resetParams').addEventListener('click', () => {
     document.getElementById('scurveShadow').value = 0.0;
     document.getElementById('shadowValue').textContent = '0.0';
     document.getElementById('scurveHighlight').value = 1.7;
-    document.getElementById('highlightValue').textContent = '1.7';
+    document.getElementById('highlightValue').textContent = '1.5';
     document.getElementById('scurveMidpoint').value = 0.5;
     document.getElementById('midpointValue').textContent = '0.5';
-    document.getElementById('saturation').value = 1.2;
-    document.getElementById('saturationValue').textContent = '1.2';
+    document.getElementById('saturation').value = 1.5;
+    document.getElementById('saturationValue').textContent = '1.5';
     document.querySelector('input[name="colorMethod"][value="rgb"]').checked = true;
     document.querySelector('input[name="processingMode"][value="enhanced"]').checked = true;
     document.querySelector('.controls-grid').style.display = 'grid';

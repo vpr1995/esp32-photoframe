@@ -238,9 +238,9 @@ program
     .option('--no-thumbnail', 'Skip thumbnail generation')
     .option('--scurve-strength <value>', 'S-curve overall strength (0.0-1.0)', parseFloat, 0.9)
     .option('--scurve-shadow <value>', 'S-curve shadow boost (0.0-1.0)', parseFloat, 0.0)
-    .option('--scurve-highlight <value>', 'S-curve highlight compress (0.5-3.0)', parseFloat, 1.7)
+    .option('--scurve-highlight <value>', 'S-curve highlight compress (0.5-3.0)', parseFloat, 1.5)
     .option('--scurve-midpoint <value>', 'S-curve midpoint (0.3-0.7)', parseFloat, 0.5)
-    .option('--saturation <value>', 'Saturation multiplier (1.0=normal, >1.0=more vibrant)', parseFloat, 1.2)
+    .option('--saturation <value>', 'Saturation multiplier (1.0=normal, >1.0=more vibrant)', parseFloat, 1.5)
     .option('--render-measured', 'Render BMP with measured palette colors (darker output for preview)')
     .option('--processing-mode <mode>', 'Processing algorithm: enhanced (default, with S-curve) or stock (Waveshare original)', 'enhanced')
     .action(async (input, options) => {

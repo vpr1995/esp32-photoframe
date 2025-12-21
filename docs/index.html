@@ -605,8 +605,8 @@
                     </div>
 
                     <div class="form-group">
-                        <label for="saturation">Saturation: <span id="saturationValue">1.2</span></label>
-                        <input type="range" id="saturation" min="0.5" max="2" step="0.1" value="1.2">
+                        <label for="saturation">Saturation: <span id="saturationValue">1.5</span></label>
+                        <input type="range" id="saturation" min="0.5" max="2" step="0.1" value="1.5">
                         <small>Color vibrancy (1.0=normal, >1.0=more vibrant)</small>
                     </div>
 
@@ -750,9 +750,9 @@
         const enhancedParams = {
             strength: 0.9,
             shadowBoost: 0.0,
-            highlightCompress: 1.7,
+            highlightCompress: 1.5,
             midpoint: 0.5,
-            saturation: 1.2,
+            saturation: 1.5,
             colorMethod: 'rgb',
             renderMeasured: true,
             processingMode: 'enhanced'
@@ -1048,9 +1048,9 @@
         document.getElementById('resetParams').addEventListener('click', () => {
             enhancedParams.strength = 0.9;
             enhancedParams.shadowBoost = 0.0;
-            enhancedParams.highlightCompress = 1.7;
+            enhancedParams.highlightCompress = 1.5;
             enhancedParams.midpoint = 0.5;
-            enhancedParams.saturation = 1.2;
+            enhancedParams.saturation = 1.5;
             enhancedParams.colorMethod = 'rgb';
 
             document.getElementById('scurveStrength').value = 0.9;
@@ -1058,11 +1058,11 @@
             document.getElementById('scurveShadow').value = 0.0;
             document.getElementById('shadowValue').textContent = '0.0';
             document.getElementById('scurveHighlight').value = 1.7;
-            document.getElementById('highlightValue').textContent = '1.7';
+            document.getElementById('highlightValue').textContent = '1.5';
             document.getElementById('scurveMidpoint').value = 0.5;
             document.getElementById('midpointValue').textContent = '0.5';
-            document.getElementById('saturation').value = 1.2;
-            document.getElementById('saturationValue').textContent = '1.2';
+            document.getElementById('saturation').value = 1.5;
+            document.getElementById('saturationValue').textContent = '1.5';
             document.querySelector('input[name="colorMethod"][value="rgb"]').checked = true;
 
             updatePreviews();
