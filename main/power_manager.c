@@ -87,7 +87,7 @@ void power_manager_enter_sleep(void)
 
     // Enable boot button and key button wake-up
     esp_sleep_enable_ext0_wakeup(BOOT_BUTTON_GPIO, 0);
-    esp_sleep_enable_ext1_wakeup((1ULL << KEY_BUTTON_GPIO), ESP_EXT1_WAKEUP_ALL_LOW);
+    esp_sleep_enable_ext1_wakeup((1ULL << KEY_BUTTON_GPIO), ESP_EXT1_WAKEUP_ANY_LOW);
 
     ESP_LOGI(TAG, "Entering deep sleep now");
     vTaskDelay(pdMS_TO_TICKS(100));
@@ -105,7 +105,7 @@ void power_manager_enter_sleep_with_timer(uint32_t sleep_time_sec)
     // Enable timer, boot button, and key button wake-up
     esp_sleep_enable_timer_wakeup(sleep_time_sec * 1000000ULL);  // Convert to microseconds
     esp_sleep_enable_ext0_wakeup(BOOT_BUTTON_GPIO, 0);
-    esp_sleep_enable_ext1_wakeup((1ULL << KEY_BUTTON_GPIO), ESP_EXT1_WAKEUP_ALL_LOW);
+    esp_sleep_enable_ext1_wakeup((1ULL << KEY_BUTTON_GPIO), ESP_EXT1_WAKEUP_ANY_LOW);
 
     ESP_LOGI(TAG, "Entering deep sleep now");
     vTaskDelay(pdMS_TO_TICKS(100));
