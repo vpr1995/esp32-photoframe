@@ -45,48 +45,95 @@
             <!-- Preview and Controls Area -->
             <div id="previewArea" style="display: none;">
             <div class="preview-container">
-                <div class="preview-canvas-wrapper">
-                    <canvas id="previewCanvas"></canvas>
-                    <div class="preview-label">Preview (Measured Palette Simulation)</div>
+                <div class="comparison-container" style="flex: 0 0 auto; padding: 0; background: transparent;">
+                    <h3 style="text-align: center; margin-bottom: 15px; color: #333;">
+                        Drag the slider to compare
+                    </h3>
+                    <div class="comparison-wrapper" id="comparisonWrapper">
+                        <div class="canvas-container">
+                            <canvas id="originalCanvas"></canvas>
+                            <canvas id="previewCanvas"></canvas>
+                            <div class="slider-container" id="sliderContainer">
+                                <div class="slider-handle">⟷</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="comparison-labels">
+                        <span>← Original</span>
+                        <span>Dithered Preview →</span>
+                    </div>
                 </div>
-                <div class="curve-canvas-wrapper">
-                    <canvas id="curveCanvas" width="300" height="300"></canvas>
-                    <div class="preview-label">S-Curve Tone Mapping</div>
-                </div>
-            </div>
-            
-            <div class="form-group" style="margin-bottom: 20px;">
-                <label>Processing Algorithm:</label>
-                <div style="margin-top: 8px;">
-                    <label style="display: block; margin-bottom: 5px;">
-                        <input type="radio" name="processingMode" value="enhanced" checked style="margin-right: 5px;">
-                        Enhanced (Our Algorithm)
-                    </label>
-                    <label style="display: block;">
-                        <input type="radio" name="processingMode" value="stock" style="margin-right: 5px;">
-                        Stock (Waveshare Original)
-                    </label>
-                </div>
-                <small>Stock mode uses simple dithering without tone mapping</small>
-            </div>
-            
-            <div id="enhancedControls">
-                <!-- Row 1: Color Matching Method -->
-                <div class="controls-grid" style="margin-bottom: 20px;">
-                    <div class="form-group">
-                        <label>Color Matching Method:</label>
-                        <div style="margin-top: 8px;">
-                            <label style="display: block; margin-bottom: 5px;">
-                                <input type="radio" name="colorMethod" value="rgb" checked style="margin-right: 5px;">
-                                Simple RGB (default)
-                            </label>
-                            <label style="display: block;">
-                                <input type="radio" name="colorMethod" value="lab" style="margin-right: 5px;">
-                                LAB Color Space (better for grayscale)
-                            </label>
+                <div class="curve-canvas-wrapper" style="display: flex; flex-direction: column; gap: 15px;">
+                    <div>
+                        <canvas id="curveCanvas" width="300" height="300"></canvas>
+                        <div class="preview-label">S-Curve Tone Mapping</div>
+                    </div>
+                    
+                    <!-- S-Curve Controls (Advanced) - Under Curve Canvas -->
+                    <div id="scurveControls" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0;">
+                        <div style="font-weight: 600; margin-bottom: 12px; color: #667eea;">S-Curve Parameters</div>
+                        <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div class="form-group">
+                                <label for="scurveStrength">Strength: <span id="strengthValue">0.9</span></label>
+                                <input type="range" id="scurveStrength" min="0" max="1" step="0.1" value="0.9">
+                                <small>Overall tone mapping strength (0=linear, 1=strong)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="scurveShadow">Shadow Boost: <span id="shadowValue">0.0</span></label>
+                                <input type="range" id="scurveShadow" min="0" max="1" step="0.1" value="0.0">
+                                <small>Brighten shadow areas (higher=brighter)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="scurveHighlight">Highlight Compress: <span id="highlightValue">1.7</span></label>
+                                <input type="range" id="scurveHighlight" min="0.5" max="5" step="0.1" value="1.7">
+                                <small>Protect highlights from over-exposure (higher=more protection)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="scurveMidpoint">Midpoint: <span id="midpointValue">0.5</span></label>
+                                <input type="range" id="scurveMidpoint" min="0.3" max="0.7" step="0.05" value="0.5">
+                                <small>Where to split shadows/highlights</small>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Row 1: Processing Algorithm & Color Matching Method -->
+            <div class="controls-grid" style="margin-bottom: 20px;">
+                <div class="form-group">
+                    <label>Processing Algorithm:</label>
+                    <div style="margin-top: 8px;">
+                        <label style="display: block; margin-bottom: 5px;">
+                            <input type="radio" name="processingMode" value="enhanced" checked style="margin-right: 5px;">
+                            Enhanced (Our Algorithm)
+                        </label>
+                        <label style="display: block;">
+                            <input type="radio" name="processingMode" value="stock" style="margin-right: 5px;">
+                            Stock (Waveshare Original)
+                        </label>
+                    </div>
+                    <small>Stock mode uses simple dithering without tone mapping</small>
+                </div>
+                
+                <div class="form-group" id="colorMethodControl">
+                    <label>Color Matching Method:</label>
+                    <div style="margin-top: 8px;">
+                        <label style="display: block; margin-bottom: 5px;">
+                            <input type="radio" name="colorMethod" value="rgb" checked style="margin-right: 5px;">
+                            Simple RGB (default)
+                        </label>
+                        <label style="display: block;">
+                            <input type="radio" name="colorMethod" value="lab" style="margin-right: 5px;">
+                            LAB Color Space (better for grayscale)
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="enhancedControls">
                 
                 <!-- Row 2: Exposure & Saturation -->
                 <div class="controls-grid" style="margin-bottom: 20px;">
@@ -103,60 +150,27 @@
                     </div>
                 </div>
                 
-                <!-- Row 3: Tone Mapping Selection -->
-                <div class="form-group" style="margin-bottom: 15px;">
-                    <label>Tone Mapping:</label>
-                    <div style="margin-top: 8px;">
-                        <label style="display: block; margin-bottom: 5px;">
-                            <input type="radio" name="toneMode" value="scurve" checked style="margin-right: 5px;">
-                            S-Curve (Advanced)
-                        </label>
-                        <label style="display: block;">
-                            <input type="radio" name="toneMode" value="contrast" style="margin-right: 5px;">
-                            Contrast (Simple)
-                        </label>
+                <!-- Row 3: Tone Mapping Selection and Contrast Control -->
+                <div class="controls-grid" style="margin-bottom: 20px;">
+                    <div class="form-group">
+                        <label>Tone Mapping:</label>
+                        <div style="margin-top: 8px;">
+                            <label style="display: block; margin-bottom: 5px;">
+                                <input type="radio" name="toneMode" value="scurve" checked style="margin-right: 5px;">
+                                S-Curve (Advanced)
+                            </label>
+                            <label style="display: block;">
+                                <input type="radio" name="toneMode" value="contrast" style="margin-right: 5px;">
+                                Contrast (Simple)
+                            </label>
+                        </div>
                     </div>
-                </div>
-                
-                <!-- Contrast Control (Simple) -->
-                <div id="contrastControl" style="display: none; margin-bottom: 20px;">
-                    <div class="controls-grid">
-                        <div class="form-group">
-                            <label for="contrast">Contrast: <span id="contrastValue">1.0</span></label>
-                            <input type="range" id="contrast" min="0.5" max="2.0" step="0.1" value="1.0">
-                            <small>Tonal range (1.0=normal, >1.0=more contrast)</small>
-                        </div>
-                        <div></div><!-- Empty placeholder to maintain grid layout -->
-                    </div>
-                </div>
-                
-                <!-- S-Curve Controls (Advanced) - Visually Grouped -->
-                <div id="scurveControls" style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #e0e0e0; margin-bottom: 20px;">
-                    <div style="font-weight: 600; margin-bottom: 12px; color: #667eea;">S-Curve Parameters</div>
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
-                        <div class="form-group">
-                            <label for="scurveStrength">Strength: <span id="strengthValue">0.9</span></label>
-                            <input type="range" id="scurveStrength" min="0" max="1" step="0.1" value="0.9">
-                            <small>Overall tone mapping strength (0=linear, 1=strong)</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="scurveShadow">Shadow Boost: <span id="shadowValue">0.0</span></label>
-                            <input type="range" id="scurveShadow" min="0" max="1" step="0.1" value="0.0">
-                            <small>Brighten shadow areas (higher=brighter)</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="scurveHighlight">Highlight Compress: <span id="highlightValue">1.7</span></label>
-                            <input type="range" id="scurveHighlight" min="0.5" max="5" step="0.1" value="1.7">
-                            <small>Protect highlights from over-exposure (higher=more protection)</small>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="scurveMidpoint">Midpoint: <span id="midpointValue">0.5</span></label>
-                            <input type="range" id="scurveMidpoint" min="0.3" max="0.7" step="0.05" value="0.5">
-                            <small>Where to split shadows/highlights</small>
-                        </div>
+                    
+                    <!-- Contrast Control (Simple) -->
+                    <div id="contrastControl" class="form-group" style="display: none;">
+                        <label for="contrast">Contrast: <span id="contrastValue">1.0</span></label>
+                        <input type="range" id="contrast" min="0.5" max="2.0" step="0.1" value="1.0">
+                        <small>Tonal range (1.0=normal, >1.0=more contrast)</small>
                     </div>
                 </div>
             </div>

@@ -347,7 +347,8 @@ async function resizeImage(file, maxWidth, maxHeight, quality) {
 }
 
 async function loadImagePreview(file) {
-    const canvas = document.getElementById('previewCanvas');
+    const previewCanvas = document.getElementById('previewCanvas');
+    const originalCanvas = document.getElementById('originalCanvas');
     const statusDiv = document.getElementById('uploadStatus');
     
     // Clear any previous status
@@ -362,30 +363,37 @@ async function loadImagePreview(file) {
         const isPortrait = img.height > img.width;
         
         // Set canvas to display dimensions (800x480 or 480x800)
-        if (isPortrait) {
-            canvas.width = 480;
-            canvas.height = 800;
-        } else {
-            canvas.width = 800;
-            canvas.height = 480;
-        }
+        const width = isPortrait ? 480 : 800;
+        const height = isPortrait ? 800 : 480;
+        
+        previewCanvas.width = width;
+        previewCanvas.height = height;
+        originalCanvas.width = width;
+        originalCanvas.height = height;
         
         // Draw image with cover mode (fill and crop)
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
-        const scaleX = canvas.width / img.width;
-        const scaleY = canvas.height / img.height;
+        const scaleX = width / img.width;
+        const scaleY = height / img.height;
         const scale = Math.max(scaleX, scaleY);
         
         const scaledWidth = img.width * scale;
         const scaledHeight = img.height * scale;
-        const offsetX = (canvas.width - scaledWidth) / 2;
-        const offsetY = (canvas.height - scaledHeight) / 2;
+        const offsetX = (width - scaledWidth) / 2;
+        const offsetY = (height - scaledHeight) / 2;
         
-        ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        // Draw to both canvases
+        const previewCtx = previewCanvas.getContext('2d', { willReadFrequently: true });
+        const originalCtx = originalCanvas.getContext('2d');
+        
+        previewCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+        originalCtx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
         
         // Store canvas and original image data
-        currentImageCanvas = canvas;
-        originalImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        currentImageCanvas = previewCanvas;
+        originalImageData = previewCtx.getImageData(0, 0, width, height);
+        
+        // Initialize comparison slider
+        initComparisonSlider();
         
         // Apply initial processing
         updatePreview();
@@ -408,6 +416,70 @@ function loadImage(file) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
     });
+}
+
+function initComparisonSlider() {
+    const sliderContainer = document.getElementById('sliderContainer');
+    const comparisonWrapper = document.getElementById('comparisonWrapper');
+    const previewCanvas = document.getElementById('previewCanvas');
+    
+    if (!sliderContainer || !comparisonWrapper || !previewCanvas) return;
+    
+    let isDragging = false;
+    
+    function updateSliderPosition(clientX) {
+        const rect = comparisonWrapper.getBoundingClientRect();
+        let position = ((clientX - rect.left) / rect.width) * 100;
+        position = Math.max(0, Math.min(100, position));
+        
+        sliderContainer.style.left = position + '%';
+        // Clip from left: at 80% position, clip 80% from left, showing 20% dithered on right
+        // inset(top right bottom left)
+        previewCanvas.style.clipPath = `inset(0 0 0 ${position}%)`;
+    }
+    
+    // Mouse events
+    sliderContainer.addEventListener('mousedown', (e) => {
+        isDragging = true;
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', (e) => {
+        if (isDragging) {
+            updateSliderPosition(e.clientX);
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        isDragging = false;
+    });
+    
+    // Touch events
+    sliderContainer.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        e.preventDefault();
+    });
+    
+    document.addEventListener('touchmove', (e) => {
+        if (isDragging && e.touches.length > 0) {
+            updateSliderPosition(e.touches[0].clientX);
+        }
+    });
+    
+    document.addEventListener('touchend', () => {
+        isDragging = false;
+    });
+    
+    // Click on wrapper to move slider
+    comparisonWrapper.addEventListener('click', (e) => {
+        if (e.target !== sliderContainer && !sliderContainer.contains(e.target)) {
+            updateSliderPosition(e.clientX);
+        }
+    });
+    
+    // Initialize at 0% (slider on left, showing full dithered preview)
+    sliderContainer.style.left = '0%';
+    previewCanvas.style.clipPath = 'inset(0 0 0 0%)';
 }
 
 function drawCurveVisualization() {
@@ -610,17 +682,14 @@ document.querySelectorAll('input[name="toneMode"]').forEach(radio => {
         
         // Show/hide contrast or S-curve controls based on mode
         const contrastControl = document.getElementById('contrastControl');
-        const scurveControls = document.getElementById('scurveControls');
         const curveCanvasWrapper = document.querySelector('.curve-canvas-wrapper');
         
         if (e.target.value === 'contrast') {
             contrastControl.style.display = 'block';
-            scurveControls.style.display = 'none';
             curveCanvasWrapper.style.display = 'none';
         } else {
             contrastControl.style.display = 'none';
-            scurveControls.style.display = 'grid';
-            curveCanvasWrapper.style.display = 'block';
+            curveCanvasWrapper.style.display = 'flex';
         }
         
         updatePreview();
@@ -634,12 +703,15 @@ document.querySelectorAll('input[name="processingMode"]').forEach(radio => {
         
         // Show/hide enhanced controls and canvas based on mode
         const enhancedControls = document.getElementById('enhancedControls');
+        const colorMethodControl = document.getElementById('colorMethodControl');
         const curveCanvasWrapper = document.querySelector('.curve-canvas-wrapper');
         if (e.target.value === 'stock') {
             enhancedControls.style.display = 'none';
+            colorMethodControl.style.display = 'none';
             curveCanvasWrapper.style.display = 'none';
         } else {
             enhancedControls.style.display = 'grid';
+            colorMethodControl.style.display = 'block';
             // Show curve canvas only if S-curve mode is selected
             if (currentParams.toneMode === 'scurve') {
                 curveCanvasWrapper.style.display = 'block';
@@ -698,9 +770,9 @@ document.getElementById('resetParams').addEventListener('click', () => {
     document.querySelector('input[name="toneMode"][value="scurve"]').checked = true;
     document.querySelector('input[name="processingMode"][value="enhanced"]').checked = true;
     document.getElementById('enhancedControls').style.display = 'grid';
+    document.getElementById('colorMethodControl').style.display = 'block';
     document.getElementById('contrastControl').style.display = 'none';
-    document.getElementById('scurveControls').style.display = 'grid';
-    document.querySelector('.curve-canvas-wrapper').style.display = 'block';
+    document.querySelector('.curve-canvas-wrapper').style.display = 'flex';
     
     updatePreview();
 });
