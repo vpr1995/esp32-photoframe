@@ -30,7 +30,7 @@ static esp_err_t init_sdcard(void)
     ESP_LOGI(TAG, "Initializing SD card");
 
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false, .max_files = 5, .allocation_unit_size = 16 * 1024};
+        .format_if_mount_failed = false, .max_files = 5, .allocation_unit_size = 16 * 1024 * 3};
 
     sdmmc_card_t *card;
     const char mount_point[] = SDCARD_MOUNT_POINT;
@@ -75,6 +75,13 @@ static esp_err_t init_sdcard(void)
     }
 
     sdmmc_card_print_info(stdout, card);
+
+    // Poll sdcard status until it's ready
+    ESP_LOGI(TAG, "Waiting for SD card to be ready...");
+    while (sdmmc_get_status(card) != ESP_OK) {
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    ESP_LOGI(TAG, "SD card ready");
 
     struct stat st;
     if (stat(IMAGE_DIRECTORY, &st) != 0) {
@@ -179,6 +186,12 @@ void app_main(void)
     axp_cmd_init();
     ESP_LOGI(TAG, "AXP2101 initialized");
 
+    // Wait for power rails to stabilize after AXP2101 initialization
+    // The AXP2101 enables DC1, ALDO3, ALDO4 at 3.3V which power the SD card
+    // Stock firmware has similar stabilization wait before SD card access
+    ESP_LOGI(TAG, "Waiting for power rails to stabilize...");
+    vTaskDelay(pdMS_TO_TICKS(200));
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -186,7 +199,13 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    // Initialize SD card (optional - device can still work without it for WiFi setup)
+    ESP_ERROR_CHECK(image_processor_init());
+
+    ESP_ERROR_CHECK(display_manager_init());
+
+    // Initialize power manager early to detect wakeup cause
+    ESP_ERROR_CHECK(power_manager_init());
+
     ret = init_sdcard();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "SD card initialization failed - triggering hard reset");
@@ -194,13 +213,6 @@ void app_main(void)
         axp_shutdown();                   // Hard power-off
         // Won't reach here
     }
-
-    ESP_ERROR_CHECK(image_processor_init());
-
-    ESP_ERROR_CHECK(display_manager_init());
-
-    // Initialize power manager early to detect wakeup cause
-    ESP_ERROR_CHECK(power_manager_init());
 
     // Check wake-up source with priority: Timer > KEY > BOOT
     if (power_manager_is_timer_wakeup()) {

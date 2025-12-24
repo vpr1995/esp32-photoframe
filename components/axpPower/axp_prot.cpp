@@ -77,10 +77,6 @@ void axp_cmd_init(void) {
         axp2101.setChargeTargetVoltage(XPOWERS_AXP2101_CHG_VOL_4V1);
         ESP_LOGW("axp2101_init_log","Set the full charge voltage of the battery to 4.1V.");
     }
-    if(axp2101.getChargerConstantCurr() != XPOWERS_AXP2101_CHG_CUR_500MA) {
-        axp2101.setChargerConstantCurr(XPOWERS_AXP2101_CHG_CUR_500MA);
-        ESP_LOGW("axp2101_init_log","Set charging current to 500mA for USB compatibility");
-    }
     if(axp2101.getButtonBatteryVoltage() != 3300) {
         axp2101.setButtonBatteryChargeVoltage(3300);
         ESP_LOGW("axp2101_init_log","Set Button Battery charge voltage");
