@@ -614,6 +614,7 @@ program
       }
 
       // Use device settings if available, otherwise use CLI options
+      // Note: renderMeasured is CLI-only and always comes from options
       const processOptions = deviceSettings
         ? {
             generateThumbnail: options.thumbnail,
@@ -626,7 +627,7 @@ program
             scurveHighlight: deviceSettings.highlightCompress,
             scurveMidpoint: deviceSettings.midpoint,
             colorMethod: deviceSettings.colorMethod,
-            renderMeasured: deviceSettings.renderMeasured,
+            renderMeasured: options.renderMeasured || false,
             processingMode: deviceSettings.processingMode,
           }
         : {
@@ -640,7 +641,7 @@ program
             scurveHighlight: options.scurveHighlight,
             scurveMidpoint: options.scurveMidpoint,
             colorMethod: options.colorMethod,
-            renderMeasured: options.renderMeasured,
+            renderMeasured: options.renderMeasured || false,
             processingMode: options.processingMode,
           };
 
