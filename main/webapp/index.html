@@ -204,6 +204,94 @@
         </section>
 
         <section class="card">
+            <h2>Color Palette Calibration</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                Calibrate the measured color palette for your specific E6 display batch. This improves color accuracy during image processing.
+            </p>
+            
+            <div id="currentPalette" style="margin-bottom: 20px;">
+                <h3 style="font-size: 1.1rem; margin-bottom: 10px;">Current Palette</h3>
+                <p style="color: #666; margin-bottom: 15px; font-size: 0.9rem;">
+                    You can manually adjust the RGB values (0-255) to fine-tune each color. Changes will be saved when you click the Save button.
+                </p>
+                <div id="currentPaletteColors" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 15px;">
+                    <!-- Colors will be populated by JavaScript -->
+                </div>
+                <div id="savePaletteButtonContainer" style="display: none; margin-top: 15px;">
+                    <button id="savePaletteBtn" class="btn btn-primary">Save Palette Changes</button>
+                    <button id="cancelPaletteBtn" class="btn btn-secondary" style="margin-left: 10px;">Cancel</button>
+                </div>
+                <div id="savePaletteStatus" style="margin-top: 10px;"></div>
+            </div>
+            
+            <div id="calibrationFlow" style="display: none; margin-top: 20px; padding: 20px; background: #f8f9fa; border-radius: 8px;">
+                <div id="calibrationStep1" class="calibration-step">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">Step 1: Display Calibration Image</h3>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Click the button below to display the calibration pattern on your device. The pattern shows 6 color boxes.
+                    </p>
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <button id="displayCalibrationBtn" class="btn btn-primary">Display Calibration Pattern</button>
+                        <button id="skipDisplayBtn" class="btn btn-secondary">Skip (Already Displayed)</button>
+                    </div>
+                    <div id="displayCalibrationStatus" style="margin-top: 10px;"></div>
+                </div>
+                
+                <div id="calibrationStep2" class="calibration-step" style="display: none;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">Step 2: Take Photo</h3>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Place the device under a 5500K light source (daylight or daylight-balanced LED). Take a photo with your phone camera, ensuring the entire display is visible and well-lit. Avoid shadows and reflections.
+                    </p>
+                    <div style="margin-bottom: 15px; padding: 10px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                        <p style="font-weight: 600; margin-bottom: 8px; color: #856404;">📸 Important:</p>
+                        <p style="font-size: 0.95rem; color: #856404; margin: 0;">
+                            <strong>Crop your photo to show ONLY the color boxes</strong> - no device edges, bezels, or background. This ensures accurate color detection.
+                        </p>
+                    </div>
+                    <div style="margin-bottom: 15px; padding: 10px; background: #f8f9fa; border-radius: 4px;">
+                        <p style="font-weight: 600; margin-bottom: 8px; color: #495057;">Example Photo:</p>
+                        <img src="measurement_sample.jpg" alt="Sample calibration photo" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                        <p style="font-size: 0.9rem; color: #6c757d; margin-top: 8px;">Your photo should look similar to this - entire display visible, well-lit, no glare.</p>
+                    </div>
+                    <button id="proceedToUploadBtn" class="btn btn-primary">I've Taken the Photo</button>
+                </div>
+                
+                <div id="calibrationStep3" class="calibration-step" style="display: none;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">Step 3: Crop & Upload Photo</h3>
+                    <p style="color: #666; margin-bottom: 10px;">
+                        <strong>Before uploading:</strong> Crop your photo to show only the 6 color boxes - remove all device edges, bezels, and background. This improves color detection accuracy.
+                    </p>
+                    <p style="color: #666; margin-bottom: 15px;">
+                        Upload the cropped photo. The system will automatically detect the color boxes and extract the RGB values.
+                    </p>
+                    <input type="file" id="calibrationPhotoInput" accept="image/*" style="margin-bottom: 15px;">
+                    <div id="calibrationAnalysisStatus" style="margin-top: 10px;"></div>
+                    <canvas id="calibrationCanvas" style="display: none; max-width: 100%; margin-top: 15px; border: 1px solid #ddd;"></canvas>
+                </div>
+                
+                <div id="calibrationStep4" class="calibration-step" style="display: none;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 10px;">Step 4: Review & Save</h3>
+                    <p style="color: #666; margin-bottom: 10px;">
+                        Review the measured colors below. You can manually adjust the RGB values (0-255) to fine-tune each color.
+                    </p>
+                    <p style="color: #666; margin-bottom: 15px; font-size: 0.9rem;">
+                        💡 <strong>Tip:</strong> The color swatch updates in real-time as you edit. When satisfied, click Save to store the calibration.
+                    </p>
+                    <div id="measuredPalette" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 15px;">
+                    </div>
+                    <div class="button-group">
+                        <button id="cancelCalibrationBtn" class="btn btn-secondary">Cancel</button>
+                        <button id="saveCalibrationBtn" class="btn btn-primary">Save Calibration</button>
+                    </div>
+                    <div id="saveCalibrationStatus" style="margin-top: 10px;"></div>
+                </div>
+            </div>
+            
+            <button id="startCalibrationBtn" class="btn btn-primary" style="margin-top: 15px;">Start Calibration</button>
+            <button id="resetPaletteBtn" class="btn btn-secondary" style="margin-top: 15px;">Reset to Defaults</button>
+        </section>
+
+        <section class="card">
             <h2>Power & Auto-Rotate Settings</h2>
             <form id="configForm">
                 <div class="form-group">

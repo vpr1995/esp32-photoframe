@@ -4,6 +4,7 @@
 
 #include "album_manager.h"
 #include "axp_prot.h"
+#include "color_palette.h"
 #include "config.h"
 #include "display_manager.h"
 #include "driver/gpio.h"
@@ -206,6 +207,8 @@ void app_main(void)
     ESP_ERROR_CHECK(display_manager_init());
 
     ESP_ERROR_CHECK(processing_settings_init());
+
+    ESP_ERROR_CHECK(color_palette_init());
 
     // Initialize power manager early to detect wakeup cause
     ESP_ERROR_CHECK(power_manager_init());

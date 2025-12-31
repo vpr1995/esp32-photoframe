@@ -500,6 +500,27 @@ async function loadImagePreview(file) {
     statusDiv.textContent = '';
     statusDiv.className = '';
     
+    // Fetch calibrated palette from device if not already loaded
+    if (!deviceCalibratedPalette) {
+        try {
+            const response = await fetch(`${API_BASE}/api/settings/palette`);
+            if (response.ok) {
+                const palette = await response.json();
+                deviceCalibratedPalette = [
+                    [palette.black.r, palette.black.g, palette.black.b],
+                    [palette.white.r, palette.white.g, palette.white.b],
+                    [palette.yellow.r, palette.yellow.g, palette.yellow.b],
+                    [palette.red.r, palette.red.g, palette.red.b],
+                    [0, 0, 0],  // Reserved
+                    [palette.blue.r, palette.blue.g, palette.blue.b],
+                    [palette.green.r, palette.green.g, palette.green.b]
+                ];
+            }
+        } catch (error) {
+            console.error('Error loading calibrated palette:', error);
+        }
+    }
+    
     try {
         // Load image and resize to display size
         const img = await loadImage(file);
@@ -757,8 +778,12 @@ const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
 const imageDataCopy = tempCtx.createImageData(originalImageData.width, originalImageData.height);
 imageDataCopy.data.set(originalImageData.data);
     
-// Apply image processing to the ImageData copy
-processImage(imageDataCopy, currentParams);
+// Apply image processing with device calibrated palette for accurate preview
+const previewParams = { ...currentParams };
+if (deviceCalibratedPalette) {
+    previewParams.customPalette = deviceCalibratedPalette;
+}
+processImage(imageDataCopy, previewParams);
     
 // Put processed data back to temp canvas
 tempCtx.putImageData(imageDataCopy, 0, 0);
@@ -1355,3 +1380,624 @@ function initializeFormDefaults() {
 
 setupDragAndDrop();
 loadPersistedSettings();
+
+// ===== Color Palette Calibration =====
+
+let measuredPaletteData = null;
+
+// Load and display current palette
+let currentPaletteData = null;
+let originalPaletteData = null;
+let deviceCalibratedPalette = null;  // Palette for preview dithering
+
+async function loadColorPalette() {
+    try {
+        const response = await fetch(`${API_BASE}/api/settings/palette`);
+        if (response.ok) {
+            const palette = await response.json();
+            currentPaletteData = JSON.parse(JSON.stringify(palette));
+            originalPaletteData = JSON.parse(JSON.stringify(palette));
+            
+            // Convert palette to array format for preview dithering
+            deviceCalibratedPalette = [
+                [palette.black.r, palette.black.g, palette.black.b],
+                [palette.white.r, palette.white.g, palette.white.b],
+                [palette.yellow.r, palette.yellow.g, palette.yellow.b],
+                [palette.red.r, palette.red.g, palette.red.b],
+                [0, 0, 0],  // Reserved
+                [palette.blue.r, palette.blue.g, palette.blue.b],
+                [palette.green.r, palette.green.g, palette.green.b]
+            ];
+            
+            displayPalette(palette);
+            
+            // Update preview if image is loaded
+            if (currentImageCanvas && originalImageData) {
+                updatePreview();
+            }
+        }
+    } catch (error) {
+        console.error('Error loading palette:', error);
+    }
+}
+
+function displayPalette(palette) {
+    const container = document.getElementById('currentPaletteColors');
+    container.innerHTML = '';
+    
+    const colors = ['black', 'white', 'yellow', 'red', 'blue', 'green'];
+    colors.forEach(color => {
+        const rgb = palette[color];
+        const div = document.createElement('div');
+        div.className = 'palette-color';
+        div.innerHTML = `
+            <div class="palette-swatch" id="current-swatch-${color}" style="background-color: rgb(${rgb.r}, ${rgb.g}, ${rgb.b});"></div>
+            <div class="palette-label">${color.charAt(0).toUpperCase() + color.slice(1)}</div>
+            <div class="palette-rgb-inputs" style="display: flex; gap: 4px; margin-top: 5px;">
+                <input type="number" id="current-r-${color}" min="0" max="255" value="${rgb.r}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="r" class="current-rgb-input">
+                <input type="number" id="current-g-${color}" min="0" max="255" value="${rgb.g}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="g" class="current-rgb-input">
+                <input type="number" id="current-b-${color}" min="0" max="255" value="${rgb.b}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="b" class="current-rgb-input">
+            </div>
+        `;
+        container.appendChild(div);
+    });
+    
+    // Add event listeners
+    document.querySelectorAll('.current-rgb-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const color = e.target.dataset.color;
+            const channel = e.target.dataset.channel;
+            let value = parseInt(e.target.value);
+            
+            if (isNaN(value)) value = 0;
+            if (value < 0) value = 0;
+            if (value > 255) value = 255;
+            e.target.value = value;
+            
+            currentPaletteData[color][channel] = value;
+            
+            const swatch = document.getElementById(`current-swatch-${color}`);
+            const r = currentPaletteData[color].r;
+            const g = currentPaletteData[color].g;
+            const b = currentPaletteData[color].b;
+            swatch.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+            
+            checkPaletteChanges();
+        });
+    });
+    
+    document.getElementById('savePaletteButtonContainer').style.display = 'none';
+}
+
+function checkPaletteChanges() {
+    const hasChanges = JSON.stringify(currentPaletteData) !== JSON.stringify(originalPaletteData);
+    document.getElementById('savePaletteButtonContainer').style.display = hasChanges ? 'block' : 'none';
+}
+
+// Start calibration flow
+document.getElementById('startCalibrationBtn').addEventListener('click', () => {
+    // Clear all previous calibration state
+    measuredPaletteData = null;
+    
+    // Clear all status messages
+    document.getElementById('displayCalibrationStatus').innerHTML = '';
+    document.getElementById('calibrationAnalysisStatus').innerHTML = '';
+    document.getElementById('saveCalibrationStatus').innerHTML = '';
+    
+    // Clear canvas and file input
+    const canvas = document.getElementById('calibrationCanvas');
+    canvas.style.display = 'none';
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    document.getElementById('calibrationPhotoInput').value = '';
+    
+    // Clear measured palette display
+    document.getElementById('measuredPalette').innerHTML = '';
+    
+    // Show calibration flow and reset to step 1
+    document.getElementById('calibrationFlow').style.display = 'block';
+    document.getElementById('startCalibrationBtn').style.display = 'none';
+    document.getElementById('calibrationStep1').style.display = 'block';
+    document.getElementById('calibrationStep2').style.display = 'none';
+    document.getElementById('calibrationStep3').style.display = 'none';
+    document.getElementById('calibrationStep4').style.display = 'none';
+});
+
+// Skip display step if pattern is already shown
+document.getElementById('skipDisplayBtn').addEventListener('click', () => {
+    document.getElementById('calibrationStep1').style.display = 'none';
+    document.getElementById('calibrationStep2').style.display = 'block';
+});
+
+// Display calibration pattern on device
+document.getElementById('displayCalibrationBtn').addEventListener('click', async () => {
+    const statusDiv = document.getElementById('displayCalibrationStatus');
+    statusDiv.innerHTML = '<div class="spinner"></div><p>Displaying calibration pattern on device...</p>';
+    statusDiv.className = 'status-info';
+    
+    try {
+        // Call API to display calibration pattern directly on the e-paper
+        const response = await fetch(`${API_BASE}/api/calibration/display`, {
+            method: 'POST'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            statusDiv.innerHTML = '<p style="color: #28a745;">✓ Calibration pattern displayed on device</p>';
+            statusDiv.className = 'status-success';
+            
+            // Move to next step
+            setTimeout(() => {
+                document.getElementById('calibrationStep1').style.display = 'none';
+                document.getElementById('calibrationStep2').style.display = 'block';
+            }, 1500);
+        } else {
+            const error = await response.json();
+            throw new Error(error.message || 'Failed to display calibration pattern');
+        }
+        
+    } catch (error) {
+        statusDiv.innerHTML = `<p style="color: #dc3545;">✗ Error: ${error.message}</p>`;
+        statusDiv.className = 'status-error';
+    }
+});
+
+// Proceed to upload step
+document.getElementById('proceedToUploadBtn').addEventListener('click', () => {
+    document.getElementById('calibrationStep2').style.display = 'none';
+    document.getElementById('calibrationStep3').style.display = 'block';
+});
+
+// Analyze uploaded photo
+document.getElementById('calibrationPhotoInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    const statusDiv = document.getElementById('calibrationAnalysisStatus');
+    statusDiv.innerHTML = '<div class="spinner"></div><p>Analyzing photo...</p>';
+    statusDiv.className = 'status-info';
+    
+    try {
+        const img = await loadImage(file);
+        const canvas = document.getElementById('calibrationCanvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        canvas.style.display = 'block';
+        
+        // Extract color boxes
+        const palette = extractColorBoxes(ctx, img.width, img.height);
+        
+        if (palette) {
+            // Validate extracted colors
+            const validation = validateExtractedColors(palette);
+            
+            if (!validation.valid) {
+                throw new Error(validation.message);
+            }
+            
+            measuredPaletteData = palette;
+            statusDiv.innerHTML = '<p style="color: #28a745;">✓ Colors extracted successfully</p>';
+            statusDiv.className = 'status-success';
+            
+            // Move to review step
+            setTimeout(() => {
+                document.getElementById('calibrationStep3').style.display = 'none';
+                document.getElementById('calibrationStep4').style.display = 'block';
+                displayMeasuredPalette(palette);
+            }, 1000);
+        } else {
+            throw new Error('Could not detect color boxes. Please ensure the photo shows the entire display clearly.');
+        }
+        
+    } catch (error) {
+        const errorMsg = error.message || error.toString() || 'Unknown error occurred';
+        statusDiv.innerHTML = `<p style="color: #dc3545;">✗ Error: ${errorMsg}</p>`;
+        statusDiv.className = 'status-error';
+        console.error('Calibration photo analysis error:', error);
+    }
+});
+
+function validateExtractedColors(palette) {
+    // Expected color characteristics for E6 display
+    const expectations = {
+        black: { maxBrightness: 50, name: 'Black' },
+        white: { minBrightness: 150, name: 'White' },
+        yellow: { minR: 150, minG: 150, maxB: 100, name: 'Yellow' },
+        red: { minR: 100, maxG: 80, maxB: 80, name: 'Red' },
+        blue: { maxR: 100, maxG: 100, minB: 100, name: 'Blue' },
+        green: { maxR: 100, minG: 80, maxB: 100, name: 'Green' }
+    };
+    
+    const errors = [];
+    
+    // Helper to calculate brightness
+    const brightness = (color) => (color.r + color.g + color.b) / 3;
+    
+    // Validate black - should be dark
+    if (brightness(palette.black) > expectations.black.maxBrightness) {
+        errors.push(`Black is too bright (${Math.round(brightness(palette.black))}). Expected < ${expectations.black.maxBrightness}.`);
+    }
+    
+    // Validate white - should be bright
+    if (brightness(palette.white) < expectations.white.minBrightness) {
+        errors.push(`White is too dark (${Math.round(brightness(palette.white))}). Expected > ${expectations.white.minBrightness}.`);
+    }
+    
+    // Validate yellow - should have high R and G, low B
+    if (palette.yellow.r < expectations.yellow.minR || palette.yellow.g < expectations.yellow.minG) {
+        errors.push(`Yellow doesn't have enough red/green. Check lighting and ensure no color cast.`);
+    }
+    if (palette.yellow.b > expectations.yellow.maxB) {
+        errors.push(`Yellow has too much blue. Photo may have a blue color cast.`);
+    }
+    
+    // Validate red - should have high R, low G and B
+    if (palette.red.r < expectations.red.minR) {
+        errors.push(`Red is not red enough. Check lighting conditions.`);
+    }
+    if (palette.red.g > expectations.red.maxG || palette.red.b > expectations.red.maxB) {
+        errors.push(`Red has too much green/blue contamination.`);
+    }
+    
+    // Validate blue - should have high B, low R and G
+    if (palette.blue.b < expectations.blue.minB) {
+        errors.push(`Blue is not blue enough. Check lighting conditions.`);
+    }
+    if (palette.blue.r > expectations.blue.maxR || palette.blue.g > expectations.blue.maxG) {
+        errors.push(`Blue has too much red/green contamination.`);
+    }
+    
+    // Validate green - should have high G, low R and B
+    if (palette.green.g < expectations.green.minG) {
+        errors.push(`Green is not green enough. Check lighting conditions.`);
+    }
+    if (palette.green.r > expectations.green.maxR || palette.green.b > expectations.green.maxB) {
+        errors.push(`Green has too much red/blue contamination.`);
+    }
+    
+    // Check for overall issues
+    const avgBrightness = (brightness(palette.black) + brightness(palette.white) + 
+                          brightness(palette.yellow) + brightness(palette.red) + 
+                          brightness(palette.blue) + brightness(palette.green)) / 6;
+    
+    if (avgBrightness < 50) {
+        errors.push('Photo is too dark overall. Use better lighting (5500K daylight).');
+    }
+    
+    if (avgBrightness > 200) {
+        errors.push('Photo is overexposed. Reduce exposure or move away from direct light.');
+    }
+    
+    if (errors.length > 0) {
+        return {
+            valid: false,
+            message: 'Color validation failed:\n• ' + errors.join('\n• ') + 
+                    '\n\nPlease retake the photo under proper lighting (5500K daylight, no shadows/glare). Refer to the example image.'
+        };
+    }
+    
+    return { valid: true };
+}
+
+function extractColorBoxes(ctx, width, height) {
+    // More robust algorithm: detect color boxes by finding regions with distinct colors
+    // Strategy: scan image to find 6 largest uniform color regions
+    
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+    
+    // Step 1: Downsample image for faster processing (every 4th pixel)
+    const step = 4;
+    const samples = [];
+    
+    for (let y = 0; y < height; y += step) {
+        for (let x = 0; x < width; x += step) {
+            const idx = (y * width + x) * 4;
+            samples.push({
+                x: x,
+                y: y,
+                r: data[idx],
+                g: data[idx + 1],
+                b: data[idx + 2]
+            });
+        }
+    }
+    
+    // Step 2: Cluster samples into color groups using simple k-means-like approach
+    // We expect 6 main colors + white background
+    const colorGroups = clusterColors(samples, 7);
+    
+    // Step 3: Identify the 6 color boxes (exclude white background)
+    // Sort by area (largest first) and take top 6 non-white groups
+    const boxes = colorGroups
+        .filter(group => {
+            // Filter out white/light background (high brightness, low saturation)
+            const medR = group.medianColor.r;
+            const medG = group.medianColor.g;
+            const medB = group.medianColor.b;
+            const brightness = (medR + medG + medB) / 3;
+            const maxDiff = Math.max(Math.abs(medR - medG), Math.abs(medG - medB), Math.abs(medR - medB));
+            return !(brightness > 200 && maxDiff < 30); // Not white/gray background
+        })
+        .sort((a, b) => b.points.length - a.points.length)
+        .slice(0, 6);
+    
+    if (boxes.length < 6) {
+        throw new Error('Could not detect all 6 color boxes. Please ensure the entire display is visible and well-lit.');
+    }
+    
+    // Step 4: Sort boxes by position (top-to-bottom, left-to-right)
+    boxes.forEach(box => {
+        box.centerX = box.points.reduce((sum, p) => sum + p.x, 0) / box.points.length;
+        box.centerY = box.points.reduce((sum, p) => sum + p.y, 0) / box.points.length;
+    });
+    
+    boxes.sort((a, b) => {
+        const rowA = Math.floor(a.centerY / (height / 2));
+        const rowB = Math.floor(b.centerY / (height / 2));
+        if (rowA !== rowB) return rowA - rowB;
+        return a.centerX - b.centerX;
+    });
+    
+    // Step 5: Draw detected regions on canvas for visual feedback
+    ctx.strokeStyle = 'lime';
+    ctx.lineWidth = 3;
+    boxes.forEach((box, idx) => {
+        const minX = Math.min(...box.points.map(p => p.x));
+        const maxX = Math.max(...box.points.map(p => p.x));
+        const minY = Math.min(...box.points.map(p => p.y));
+        const maxY = Math.max(...box.points.map(p => p.y));
+        ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+    });
+    
+    // Step 6: Map to color names in expected order
+    const colors = ['black', 'white', 'yellow', 'red', 'blue', 'green'];
+    const palette = {};
+    
+    boxes.forEach((box, idx) => {
+        palette[colors[idx]] = {
+            r: Math.round(box.medianColor.r),
+            g: Math.round(box.medianColor.g),
+            b: Math.round(box.medianColor.b)
+        };
+    });
+    
+    return palette;
+}
+
+function clusterColors(samples, k) {
+    // Simple color clustering: group similar colors together
+    const groups = [];
+    const threshold = 40; // Color similarity threshold
+    
+    samples.forEach(sample => {
+        // Find closest existing group using temporary centroid
+        let closestGroup = null;
+        let minDist = Infinity;
+        
+        for (const group of groups) {
+            const dr = sample.r - group.centroid.r;
+            const dg = sample.g - group.centroid.g;
+            const db = sample.b - group.centroid.b;
+            const dist = Math.sqrt(dr * dr + dg * dg + db * db);
+            
+            if (dist < minDist && dist < threshold) {
+                minDist = dist;
+                closestGroup = group;
+            }
+        }
+        
+        if (closestGroup) {
+            // Add to existing group and update centroid (running average)
+            closestGroup.points.push(sample);
+            const n = closestGroup.points.length;
+            closestGroup.centroid.r = (closestGroup.centroid.r * (n - 1) + sample.r) / n;
+            closestGroup.centroid.g = (closestGroup.centroid.g * (n - 1) + sample.g) / n;
+            closestGroup.centroid.b = (closestGroup.centroid.b * (n - 1) + sample.b) / n;
+        } else {
+            // Create new group
+            groups.push({
+                centroid: { r: sample.r, g: sample.g, b: sample.b },
+                points: [sample]
+            });
+        }
+    });
+    
+    // Calculate median color for each group (more robust than mean for final result)
+    groups.forEach(group => {
+        const rValues = group.points.map(p => p.r).sort((a, b) => a - b);
+        const gValues = group.points.map(p => p.g).sort((a, b) => a - b);
+        const bValues = group.points.map(p => p.b).sort((a, b) => a - b);
+        
+        const mid = Math.floor(group.points.length / 2);
+        if (group.points.length % 2 === 0) {
+            // Even number of samples - average the two middle values
+            group.medianColor = {
+                r: (rValues[mid - 1] + rValues[mid]) / 2,
+                g: (gValues[mid - 1] + gValues[mid]) / 2,
+                b: (bValues[mid - 1] + bValues[mid]) / 2
+            };
+        } else {
+            // Odd number of samples - take the middle value
+            group.medianColor = {
+                r: rValues[mid],
+                g: gValues[mid],
+                b: bValues[mid]
+            };
+        }
+    });
+    
+    return groups;
+}
+
+function displayMeasuredPalette(palette) {
+    const container = document.getElementById('measuredPalette');
+    container.innerHTML = '';
+    
+    const colors = ['black', 'white', 'yellow', 'red', 'blue', 'green'];
+    colors.forEach(color => {
+        const rgb = palette[color];
+        const div = document.createElement('div');
+        div.className = 'palette-color';
+        div.innerHTML = `
+            <div class="palette-swatch" id="calibration-swatch-${color}" style="background-color: rgb(${rgb.r}, ${rgb.g}, ${rgb.b});"></div>
+            <div class="palette-label">${color.charAt(0).toUpperCase() + color.slice(1)}</div>
+            <div class="palette-rgb-inputs" style="display: flex; gap: 4px; margin-top: 5px;">
+                <input type="number" id="calibration-r-${color}" min="0" max="255" value="${rgb.r}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="r" class="calibration-rgb-input">
+                <input type="number" id="calibration-g-${color}" min="0" max="255" value="${rgb.g}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="g" class="calibration-rgb-input">
+                <input type="number" id="calibration-b-${color}" min="0" max="255" value="${rgb.b}" 
+                       style="width: 50px; padding: 2px; text-align: center;" 
+                       data-color="${color}" data-channel="b" class="calibration-rgb-input">
+            </div>
+        `;
+        container.appendChild(div);
+    });
+    
+    // Add event listeners to update palette and swatch when values change
+    document.querySelectorAll('.calibration-rgb-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const color = e.target.dataset.color;
+            const channel = e.target.dataset.channel;
+            let value = parseInt(e.target.value);
+            
+            // Clamp value between 0-255
+            if (isNaN(value)) value = 0;
+            if (value < 0) value = 0;
+            if (value > 255) value = 255;
+            e.target.value = value;
+            
+            // Update palette data
+            measuredPaletteData[color][channel] = value;
+            
+            // Update swatch color (use calibration-specific ID)
+            const swatch = document.getElementById(`calibration-swatch-${color}`);
+            const r = measuredPaletteData[color].r;
+            const g = measuredPaletteData[color].g;
+            const b = measuredPaletteData[color].b;
+            swatch.style.backgroundColor = `rgb(${r}, ${g}, ${b})`;
+        });
+    });
+}
+
+// Save calibration
+document.getElementById('saveCalibrationBtn').addEventListener('click', async () => {
+    const statusDiv = document.getElementById('saveCalibrationStatus');
+    statusDiv.innerHTML = '<div class="spinner"></div><p>Saving calibration...</p>';
+    statusDiv.className = 'status-info';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/settings/palette`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(measuredPaletteData)
+        });
+        
+        if (response.ok) {
+            statusDiv.innerHTML = '<p style="color: #28a745;">✓ Calibration saved successfully</p>';
+            statusDiv.className = 'status-success';
+            
+            // Reload palette display and close calibration flow
+            setTimeout(() => {
+                loadColorPalette();
+                document.getElementById('calibrationFlow').style.display = 'none';
+                document.getElementById('startCalibrationBtn').style.display = 'inline-block';
+            }, 1500);
+        } else {
+            throw new Error('Failed to save calibration');
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<p style="color: #dc3545;">✗ Error: ${error.message}</p>`;
+        statusDiv.className = 'status-error';
+    }
+});
+
+// Cancel calibration
+document.getElementById('cancelCalibrationBtn').addEventListener('click', () => {
+    document.getElementById('calibrationFlow').style.display = 'none';
+    document.getElementById('startCalibrationBtn').style.display = 'inline-block';
+    measuredPaletteData = null;
+});
+
+// Save current palette changes
+document.getElementById('savePaletteBtn').addEventListener('click', async () => {
+    const statusDiv = document.getElementById('savePaletteStatus');
+    statusDiv.innerHTML = '<div class="spinner"></div><p>Saving palette...</p>';
+    statusDiv.className = 'status-info';
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/settings/palette`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(currentPaletteData)
+        });
+        
+        if (response.ok) {
+            statusDiv.innerHTML = '<p style="color: #28a745;">✓ Palette saved successfully</p>';
+            statusDiv.className = 'status-success';
+            
+            // Update original data to match current
+            originalPaletteData = JSON.parse(JSON.stringify(currentPaletteData));
+            
+            // Hide save button
+            setTimeout(() => {
+                document.getElementById('savePaletteButtonContainer').style.display = 'none';
+                statusDiv.innerHTML = '';
+            }, 2000);
+        } else {
+            throw new Error('Failed to save palette');
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `<p style="color: #dc3545;">✗ Error: ${error.message}</p>`;
+        statusDiv.className = 'status-error';
+    }
+});
+
+// Cancel current palette changes
+document.getElementById('cancelPaletteBtn').addEventListener('click', () => {
+    // Reload original palette
+    currentPaletteData = JSON.parse(JSON.stringify(originalPaletteData));
+    displayPalette(originalPaletteData);
+    document.getElementById('savePaletteStatus').innerHTML = '';
+});
+
+// Reset palette to defaults
+document.getElementById('resetPaletteBtn').addEventListener('click', async () => {
+    if (!confirm('Reset color palette to default values?')) return;
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/settings/palette`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            // Reload palette from backend (which now has defaults)
+            loadColorPalette();
+            
+            // Close calibration flow if it's open
+            document.getElementById('calibrationFlow').style.display = 'none';
+            document.getElementById('startCalibrationBtn').style.display = 'inline-block';
+            measuredPaletteData = null;
+            
+            alert('Palette reset to defaults');
+        } else {
+            throw new Error('Failed to reset palette');
+        }
+    } catch (error) {
+        alert('Error resetting palette: ' + error.message);
+    }
+});
+
+// Load palette on page load
+loadColorPalette();

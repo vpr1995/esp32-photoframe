@@ -667,3 +667,36 @@ footer {
     border: 3px dashed #667eea;
     border-radius: 12px;
 }
+
+/* Color palette calibration */
+.palette-color {
+    text-align: center;
+}
+
+.palette-swatch {
+    width: 100%;
+    height: 60px;
+    border-radius: 8px;
+    border: 2px solid #ddd;
+    margin-bottom: 8px;
+}
+
+.palette-label {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.palette-rgb {
+    font-size: 0.85rem;
+    color: #666;
+    font-family: 'Courier New', monospace;
+}
+
+.calibration-step {
+    margin-bottom: 20px;
+}
+
+.calibration-step:last-child {
+    margin-bottom: 0;
+}

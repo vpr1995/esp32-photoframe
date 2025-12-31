@@ -73,14 +73,6 @@ esp_err_t display_manager_init(void)
         nvs_close(nvs_handle);
     }
 
-    nvs_handle_t nvs_handle2;
-    if (nvs_open(NVS_NAMESPACE, NVS_READONLY, &nvs_handle2) == ESP_OK) {
-        size_t len = sizeof(current_image);
-        nvs_get_str(nvs_handle2, NVS_CURRENT_IMAGE_KEY, current_image, &len);
-
-        nvs_close(nvs_handle2);
-    }
-
     ESP_LOGI(TAG, "Display manager initialized");
     ESP_LOGI(TAG, "Auto-rotate uses timer-based wake-up (only works during sleep cycles)");
     return ESP_OK;
@@ -125,13 +117,6 @@ esp_err_t display_manager_show_image(const char *filename)
     ESP_LOGI(TAG, "Free heap after display: %lu bytes", esp_get_free_heap_size());
 
     strncpy(current_image, filename, sizeof(current_image) - 1);
-
-    nvs_handle_t nvs_handle;
-    if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &nvs_handle) == ESP_OK) {
-        nvs_set_str(nvs_handle, NVS_CURRENT_IMAGE_KEY, current_image);
-        nvs_commit(nvs_handle);
-        nvs_close(nvs_handle);
-    }
 
     xSemaphoreGive(display_mutex);
 

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "color_palette.h"
 #include "config.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -30,16 +31,36 @@ static const rgb_t palette[7] = {
     {0, 255, 0}       // Green
 };
 
-// Measured palette - actual displayed colors from e-paper (used for dithering)
-static const rgb_t palette_measured[7] = {
-    {2, 2, 2},        // Black (measured)
-    {190, 190, 190},  // White (measured - much darker than theoretical!)
-    {205, 202, 0},    // Yellow (measured)
-    {135, 19, 0},     // Red (measured - much darker)
+// Measured palette - loaded from NVS or defaults
+static rgb_t palette_measured[7] = {
+    {2, 2, 2},        // Black (default)
+    {190, 190, 190},  // White (default)
+    {205, 202, 0},    // Yellow (default)
+    {135, 19, 0},     // Red (default)
     {0, 0, 0},        // Reserved
-    {5, 64, 158},     // Blue (measured - much darker)
-    {39, 102, 60}     // Green (measured - much darker)
+    {5, 64, 158},     // Blue (default)
+    {39, 102, 60}     // Green (default)
 };
+
+static void load_calibrated_palette(void)
+{
+    color_palette_t cal_palette;
+    if (color_palette_load(&cal_palette) == ESP_OK) {
+        palette_measured[0] =
+            (rgb_t) {cal_palette.black.r, cal_palette.black.g, cal_palette.black.b};
+        palette_measured[1] =
+            (rgb_t) {cal_palette.white.r, cal_palette.white.g, cal_palette.white.b};
+        palette_measured[2] =
+            (rgb_t) {cal_palette.yellow.r, cal_palette.yellow.g, cal_palette.yellow.b};
+        palette_measured[3] = (rgb_t) {cal_palette.red.r, cal_palette.red.g, cal_palette.red.b};
+        palette_measured[5] = (rgb_t) {cal_palette.blue.r, cal_palette.blue.g, cal_palette.blue.b};
+        palette_measured[6] =
+            (rgb_t) {cal_palette.green.r, cal_palette.green.g, cal_palette.green.b};
+        ESP_LOGI(TAG, "Loaded calibrated color palette from NVS");
+    } else {
+        ESP_LOGI(TAG, "Using default color palette");
+    }
+}
 
 static int find_closest_color(uint8_t r, uint8_t g, uint8_t b, const rgb_t *pal)
 {
@@ -150,8 +171,15 @@ static void apply_floyd_steinberg_dither(uint8_t *image, int width, int height,
 
 esp_err_t image_processor_init(void)
 {
+    load_calibrated_palette();
     ESP_LOGI(TAG, "Image processor initialized");
     return ESP_OK;
+}
+
+void image_processor_reload_palette(void)
+{
+    load_calibrated_palette();
+    ESP_LOGI(TAG, "Calibrated palette reloaded");
 }
 
 static uint8_t *resize_image(uint8_t *src, int src_w, int src_h, int dst_w, int dst_h)

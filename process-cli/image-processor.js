@@ -312,10 +312,13 @@ function processImage(imageData, params) {
     const mode = params.processingMode || 'enhanced';
     const toneMode = params.toneMode || 'scurve'; // 'contrast' or 'scurve'
     
+    // Use custom palette if provided, otherwise use default measured palette
+    const ditherPalette = params.customPalette || PALETTE_MEASURED;
+    
     if (mode === 'stock') {
         // Stock Waveshare algorithm: no tone mapping, theoretical palette for dithering
         // But render with measured palette for accurate preview
-        const outputPalette = params.renderMeasured ? PALETTE_MEASURED : PALETTE_THEORETICAL;
+        const outputPalette = params.renderMeasured ? ditherPalette : PALETTE_THEORETICAL;
         applyFloydSteinbergDither(imageData, 'rgb', outputPalette, PALETTE_THEORETICAL);
     } else {
         // Enhanced algorithm with tone mapping
@@ -347,8 +350,8 @@ function processImage(imageData, params) {
         }
         
         // 4. Apply Floyd-Steinberg dithering with measured palette for accurate error diffusion
-        const outputPalette = params.renderMeasured ? PALETTE_MEASURED : PALETTE_THEORETICAL;
-        applyFloydSteinbergDither(imageData, params.colorMethod, outputPalette, PALETTE_MEASURED);
+        const outputPalette = params.renderMeasured ? ditherPalette : PALETTE_THEORETICAL;
+        applyFloydSteinbergDither(imageData, params.colorMethod, outputPalette, ditherPalette);
     }
 }
 

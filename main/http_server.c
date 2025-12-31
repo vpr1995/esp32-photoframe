@@ -10,6 +10,7 @@
 #include "album_manager.h"
 #include "axp_prot.h"
 #include "cJSON.h"
+#include "color_palette.h"
 #include "config.h"
 #include "display_manager.h"
 #include "esp_app_desc.h"
@@ -40,6 +41,10 @@ extern const uint8_t image_processor_js_start[] asm("_binary_image_processor_js_
 extern const uint8_t image_processor_js_end[] asm("_binary_image_processor_js_end");
 extern const uint8_t favicon_svg_start[] asm("_binary_favicon_svg_start");
 extern const uint8_t favicon_svg_end[] asm("_binary_favicon_svg_end");
+extern const uint8_t calibration_bmp_start[] asm("_binary_calibration_bmp_start");
+extern const uint8_t calibration_bmp_end[] asm("_binary_calibration_bmp_end");
+extern const uint8_t measurement_sample_jpg_start[] asm("_binary_measurement_sample_jpg_start");
+extern const uint8_t measurement_sample_jpg_end[] asm("_binary_measurement_sample_jpg_end");
 
 static esp_err_t index_handler(httpd_req_t *req)
 {
@@ -78,6 +83,15 @@ static esp_err_t favicon_handler(httpd_req_t *req)
     const size_t favicon_svg_size = (favicon_svg_end - favicon_svg_start);
     httpd_resp_set_type(req, "image/svg+xml");
     httpd_resp_send(req, (const char *) favicon_svg_start, favicon_svg_size);
+    return ESP_OK;
+}
+
+static esp_err_t measurement_sample_handler(httpd_req_t *req)
+{
+    const size_t measurement_sample_jpg_size =
+        (measurement_sample_jpg_end - measurement_sample_jpg_start);
+    httpd_resp_set_type(req, "image/jpeg");
+    httpd_resp_send(req, (const char *) measurement_sample_jpg_start, measurement_sample_jpg_size);
     return ESP_OK;
 }
 
@@ -802,11 +816,11 @@ static esp_err_t display_image_direct_handler(httpd_req_t *req)
     }
 
     // Display the converted BMP (use full path to bypass IMAGE_DIRECTORY prefix)
-    err = display_manager_show_image("/sdcard/.temp_upload.bmp");
+    err = display_manager_show_image(temp_bmp_path);
 
     // Clean up temporary files
     unlink(temp_jpg_path);
-    // Keep the BMP file for now in case we want to redisplay it
+    unlink(temp_bmp_path);
 
     if (err != ESP_OK) {
         unlink(temp_bmp_path);
@@ -1239,6 +1253,74 @@ static esp_err_t version_handler(httpd_req_t *req)
     return ESP_OK;
 }
 
+static esp_err_t display_calibration_handler(httpd_req_t *req)
+{
+    const size_t calibration_bmp_size = (calibration_bmp_end - calibration_bmp_start);
+
+    ESP_LOGI(TAG, "Displaying calibration pattern on e-paper");
+
+    // Write embedded BMP to temporary file
+    const char *temp_path = "/sdcard/.calibration.bmp";
+
+    // Copy embedded data to SPIRAM buffer first to avoid cache coherency issues
+    // when writing directly from flash memory to SD card
+    uint8_t *bmp_buffer = (uint8_t *) heap_caps_malloc(calibration_bmp_size, MALLOC_CAP_SPIRAM);
+    if (!bmp_buffer) {
+        ESP_LOGE(TAG, "Failed to allocate SPIRAM buffer");
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"status\":\"error\",\"message\":\"Out of memory\"}");
+        return ESP_FAIL;
+    }
+
+    memcpy(bmp_buffer, calibration_bmp_start, calibration_bmp_size);
+
+    FILE *f = fopen(temp_path, "wb");
+    if (!f) {
+        ESP_LOGE(TAG, "Failed to create temporary calibration file");
+        free(bmp_buffer);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(
+            req, "{\"status\":\"error\",\"message\":\"Failed to create temporary file\"}");
+        return ESP_FAIL;
+    }
+
+    // Write from SPIRAM buffer
+    size_t written = fwrite(bmp_buffer, 1, calibration_bmp_size, f);
+    free(bmp_buffer);
+    fclose(f);
+
+    if (written != calibration_bmp_size) {
+        ESP_LOGE(TAG, "Failed to write calibration BMP");
+        unlink(temp_path);
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(
+            req, "{\"status\":\"error\",\"message\":\"Failed to write calibration data\"}");
+        return ESP_FAIL;
+    }
+
+    // Display the calibration pattern
+    esp_err_t ret = display_manager_show_image(temp_path);
+
+    // Clean up temporary file
+    unlink(temp_path);
+
+    if (ret == ESP_OK) {
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(
+            req, "{\"status\":\"success\",\"message\":\"Calibration pattern displayed\"}");
+        return ESP_OK;
+    } else {
+        httpd_resp_set_status(req, "500 Internal Server Error");
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(
+            req, "{\"status\":\"error\",\"message\":\"Failed to display calibration pattern\"}");
+        return ESP_FAIL;
+    }
+}
+
 static esp_err_t processing_settings_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
@@ -1347,10 +1429,184 @@ static esp_err_t processing_settings_handler(httpd_req_t *req)
     return ESP_FAIL;
 }
 
+static esp_err_t color_palette_handler(httpd_req_t *req)
+{
+    if (req->method == HTTP_GET) {
+        color_palette_t palette;
+        if (color_palette_load(&palette) != ESP_OK) {
+            color_palette_get_defaults(&palette);
+        }
+
+        cJSON *response = cJSON_CreateObject();
+
+        cJSON *black = cJSON_CreateObject();
+        cJSON_AddNumberToObject(black, "r", palette.black.r);
+        cJSON_AddNumberToObject(black, "g", palette.black.g);
+        cJSON_AddNumberToObject(black, "b", palette.black.b);
+        cJSON_AddItemToObject(response, "black", black);
+
+        cJSON *white = cJSON_CreateObject();
+        cJSON_AddNumberToObject(white, "r", palette.white.r);
+        cJSON_AddNumberToObject(white, "g", palette.white.g);
+        cJSON_AddNumberToObject(white, "b", palette.white.b);
+        cJSON_AddItemToObject(response, "white", white);
+
+        cJSON *yellow = cJSON_CreateObject();
+        cJSON_AddNumberToObject(yellow, "r", palette.yellow.r);
+        cJSON_AddNumberToObject(yellow, "g", palette.yellow.g);
+        cJSON_AddNumberToObject(yellow, "b", palette.yellow.b);
+        cJSON_AddItemToObject(response, "yellow", yellow);
+
+        cJSON *red = cJSON_CreateObject();
+        cJSON_AddNumberToObject(red, "r", palette.red.r);
+        cJSON_AddNumberToObject(red, "g", palette.red.g);
+        cJSON_AddNumberToObject(red, "b", palette.red.b);
+        cJSON_AddItemToObject(response, "red", red);
+
+        cJSON *blue = cJSON_CreateObject();
+        cJSON_AddNumberToObject(blue, "r", palette.blue.r);
+        cJSON_AddNumberToObject(blue, "g", palette.blue.g);
+        cJSON_AddNumberToObject(blue, "b", palette.blue.b);
+        cJSON_AddItemToObject(response, "blue", blue);
+
+        cJSON *green = cJSON_CreateObject();
+        cJSON_AddNumberToObject(green, "r", palette.green.r);
+        cJSON_AddNumberToObject(green, "g", palette.green.g);
+        cJSON_AddNumberToObject(green, "b", palette.green.b);
+        cJSON_AddItemToObject(response, "green", green);
+
+        char *json_str = cJSON_Print(response);
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, json_str);
+
+        free(json_str);
+        cJSON_Delete(response);
+        return ESP_OK;
+
+    } else if (req->method == HTTP_POST) {
+        char *buf = malloc(req->content_len + 1);
+        if (!buf) {
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+
+        int ret = httpd_req_recv(req, buf, req->content_len);
+        if (ret <= 0) {
+            free(buf);
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+        buf[ret] = '\0';
+
+        cJSON *json = cJSON_Parse(buf);
+        free(buf);
+
+        if (!json) {
+            httpd_resp_send_err(req, HTTPD_400_BAD_REQUEST, "Invalid JSON");
+            return ESP_FAIL;
+        }
+
+        color_palette_t palette;
+        color_palette_get_defaults(&palette);
+
+        cJSON *color;
+        cJSON *component;
+
+        if ((color = cJSON_GetObjectItem(json, "black"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.black.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.black.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.black.b = (uint8_t) component->valueint;
+        }
+
+        if ((color = cJSON_GetObjectItem(json, "white"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.white.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.white.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.white.b = (uint8_t) component->valueint;
+        }
+
+        if ((color = cJSON_GetObjectItem(json, "yellow"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.yellow.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.yellow.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.yellow.b = (uint8_t) component->valueint;
+        }
+
+        if ((color = cJSON_GetObjectItem(json, "red"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.red.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.red.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.red.b = (uint8_t) component->valueint;
+        }
+
+        if ((color = cJSON_GetObjectItem(json, "blue"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.blue.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.blue.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.blue.b = (uint8_t) component->valueint;
+        }
+
+        if ((color = cJSON_GetObjectItem(json, "green"))) {
+            if ((component = cJSON_GetObjectItem(color, "r")) && cJSON_IsNumber(component))
+                palette.green.r = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "g")) && cJSON_IsNumber(component))
+                palette.green.g = (uint8_t) component->valueint;
+            if ((component = cJSON_GetObjectItem(color, "b")) && cJSON_IsNumber(component))
+                palette.green.b = (uint8_t) component->valueint;
+        }
+
+        cJSON_Delete(json);
+
+        esp_err_t err = color_palette_save(&palette);
+        if (err != ESP_OK) {
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+
+        // Reload palette in image processor so subsequent uploads use the new calibration
+        image_processor_reload_palette();
+
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"success\":true}");
+        return ESP_OK;
+    } else if (req->method == HTTP_DELETE) {
+        // Reset palette to defaults
+        color_palette_t palette;
+        color_palette_get_defaults(&palette);
+        
+        esp_err_t err = color_palette_save(&palette);
+        if (err != ESP_OK) {
+            httpd_resp_send_500(req);
+            return ESP_FAIL;
+        }
+        
+        // Reload palette in image processor
+        image_processor_reload_palette();
+        
+        httpd_resp_set_type(req, "application/json");
+        httpd_resp_sendstr(req, "{\"success\":true}");
+        return ESP_OK;
+    }
+
+    httpd_resp_send_err(req, HTTPD_405_METHOD_NOT_ALLOWED, "Method not allowed");
+    return ESP_FAIL;
+}
+
 esp_err_t http_server_init(void)
 {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.max_uri_handlers = 24;    // Increased to accommodate album management endpoints
+    config.max_uri_handlers = 27;    // Increased to accommodate calibration endpoints
     config.stack_size = 12288;       // Increased from 8192 to 12KB
     config.max_open_sockets = 10;    // Limit concurrent connections to prevent memory exhaustion
     config.lru_purge_enable = true;  // Enable LRU purging of connections
@@ -1379,6 +1635,12 @@ esp_err_t http_server_init(void)
                                    .handler = favicon_handler,
                                    .user_ctx = NULL};
         httpd_register_uri_handler(server, &favicon_uri);
+
+        httpd_uri_t measurement_sample_uri = {.uri = "/measurement_sample.jpg",
+                                              .method = HTTP_GET,
+                                              .handler = measurement_sample_handler,
+                                              .user_ctx = NULL};
+        httpd_register_uri_handler(server, &measurement_sample_uri);
 
         httpd_uri_t upload_uri = {.uri = "/api/upload",
                                   .method = HTTP_POST,
@@ -1471,6 +1733,30 @@ esp_err_t http_server_init(void)
                                                     .handler = processing_settings_handler,
                                                     .user_ctx = NULL};
         httpd_register_uri_handler(server, &processing_settings_post_uri);
+
+        httpd_uri_t color_palette_get_uri = {.uri = "/api/settings/palette",
+                                             .method = HTTP_GET,
+                                             .handler = color_palette_handler,
+                                             .user_ctx = NULL};
+        httpd_register_uri_handler(server, &color_palette_get_uri);
+
+        httpd_uri_t color_palette_post_uri = {.uri = "/api/settings/palette",
+                                              .method = HTTP_POST,
+                                              .handler = color_palette_handler,
+                                              .user_ctx = NULL};
+        httpd_register_uri_handler(server, &color_palette_post_uri);
+
+        httpd_uri_t color_palette_delete_uri = {.uri = "/api/settings/palette",
+                                                .method = HTTP_DELETE,
+                                                .handler = color_palette_handler,
+                                                .user_ctx = NULL};
+        httpd_register_uri_handler(server, &color_palette_delete_uri);
+
+        httpd_uri_t display_calibration_uri = {.uri = "/api/calibration/display",
+                                               .method = HTTP_POST,
+                                               .handler = display_calibration_handler,
+                                               .user_ctx = NULL};
+        httpd_register_uri_handler(server, &display_calibration_uri);
 
         ESP_LOGI(TAG, "HTTP server started");
         return ESP_OK;

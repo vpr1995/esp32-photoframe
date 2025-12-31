@@ -1,0 +1,27 @@
+#ifndef PROCESSING_SETTINGS_H
+#define PROCESSING_SETTINGS_H
+
+#include <stdbool.h>
+
+#include "esp_err.h"
+
+typedef struct {
+    float exposure;
+    float saturation;
+    char tone_mode[16];  // "scurve" or "contrast"
+    float contrast;
+    float strength;
+    float shadow_boost;
+    float highlight_compress;
+    float midpoint;
+    char color_method[8];  // "rgb" or "lab"
+    bool render_measured;
+    char processing_mode[16];  // "enhanced" or "stock"
+} processing_settings_t;
+
+esp_err_t processing_settings_init(void);
+esp_err_t processing_settings_save(const processing_settings_t *settings);
+esp_err_t processing_settings_load(processing_settings_t *settings);
+void processing_settings_get_defaults(processing_settings_t *settings);
+
+#endif

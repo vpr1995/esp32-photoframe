@@ -49,12 +49,49 @@ async function fetchDeviceSettings(host) {
                         const settings = JSON.parse(data);
                         console.log('Device settings loaded successfully');
                         console.log(`  exposure=${settings.exposure}, saturation=${settings.saturation}, tone_mode=${settings.toneMode}`);
+                        if (settings.toneMode === 'scurve') {
+                            console.log(`  scurve: strength=${settings.strength}, shadow=${settings.shadowBoost}, highlight=${settings.highlightCompress}, midpoint=${settings.midpoint}`);
+                        } else if (settings.toneMode === 'contrast') {
+                            console.log(`  contrast=${settings.contrast}`);
+                        }
                         resolve(settings);
                     } catch (error) {
                         reject(new Error(`Failed to parse device settings: ${error.message}`));
                     }
                 } else {
                     reject(new Error(`HTTP ${res.statusCode}: Failed to fetch settings from device`));
+                }
+            });
+        }).on('error', (error) => {
+            reject(new Error(`Failed to connect to device at ${host}: ${error.message}`));
+        });
+    });
+}
+
+// Fetch color palette from device
+async function fetchDevicePalette(host) {
+    return new Promise((resolve, reject) => {
+        const url = `http://${host}/api/settings/palette`;
+        console.log(`Fetching color palette from device: ${url}`);
+        
+        http.get(url, (res) => {
+            let data = '';
+            
+            res.on('data', (chunk) => {
+                data += chunk;
+            });
+            
+            res.on('end', () => {
+                if (res.statusCode === 200) {
+                    try {
+                        const palette = JSON.parse(data);
+                        console.log('Device color palette loaded successfully');
+                        resolve(palette);
+                    } catch (error) {
+                        reject(new Error(`Failed to parse device palette: ${error.message}`));
+                    }
+                } else {
+                    reject(new Error(`HTTP ${res.statusCode}: Failed to fetch palette from device`));
                 }
             });
         }).on('error', (error) => {
@@ -164,7 +201,82 @@ function rotate90Clockwise(canvas) {
     return rotatedCanvas;
 }
 
-async function processImageFile(inputPath, outputBmp, outputThumb, options) {
+// Check if file is an image
+function isImageFile(filename) {
+    const ext = path.extname(filename).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].includes(ext);
+}
+
+// Process all images in a folder structure (albums)
+async function processFolderStructure(inputDir, outputDir, options, deviceSettings, devicePalette) {
+    console.log(`\nProcessing folder structure: ${inputDir}`);
+    console.log(`Output directory: ${outputDir}\n`);
+    
+    // Read all subdirectories (albums)
+    const entries = fs.readdirSync(inputDir, { withFileTypes: true });
+    const albums = entries.filter(entry => entry.isDirectory());
+    
+    if (albums.length === 0) {
+        console.log('No subdirectories (albums) found in input directory.');
+        return;
+    }
+    
+    console.log(`Found ${albums.length} album(s): ${albums.map(a => a.name).join(', ')}\n`);
+    
+    let totalProcessed = 0;
+    let totalErrors = 0;
+    
+    for (const album of albums) {
+        const albumName = album.name;
+        const albumInputPath = path.join(inputDir, albumName);
+        const albumOutputPath = path.join(outputDir, albumName);
+        
+        console.log(`\n=== Processing album: ${albumName} ===`);
+        
+        // Create output directory for this album
+        if (!fs.existsSync(albumOutputPath)) {
+            fs.mkdirSync(albumOutputPath, { recursive: true });
+        }
+        
+        // Get all image files in this album
+        const files = fs.readdirSync(albumInputPath);
+        const imageFiles = files.filter(isImageFile);
+        
+        if (imageFiles.length === 0) {
+            console.log(`  No images found in album: ${albumName}`);
+            continue;
+        }
+        
+        console.log(`  Found ${imageFiles.length} image(s)`);
+        
+        // Process each image
+        for (let i = 0; i < imageFiles.length; i++) {
+            const imageFile = imageFiles[i];
+            const inputPath = path.join(albumInputPath, imageFile);
+            const baseName = path.basename(imageFile, path.extname(imageFile));
+            const outputBmp = path.join(albumOutputPath, `${baseName}.bmp`);
+            const outputThumb = options.thumbnail ? path.join(albumOutputPath, `${baseName}.jpg`) : null;
+            
+            try {
+                console.log(`  [${i + 1}/${imageFiles.length}] Processing: ${imageFile}`);
+                await processImageFile(inputPath, outputBmp, outputThumb, options, devicePalette);
+                totalProcessed++;
+            } catch (error) {
+                console.error(`  ERROR processing ${imageFile}: ${error.message}`);
+                totalErrors++;
+            }
+        }
+    }
+    
+    console.log(`\n=== Summary ===`);
+    console.log(`Total images processed: ${totalProcessed}`);
+    if (totalErrors > 0) {
+        console.log(`Total errors: ${totalErrors}`);
+    }
+    console.log(`Output directory: ${outputDir}`);
+}
+
+async function processImageFile(inputPath, outputBmp, outputThumb, options, devicePalette = null) {
     console.log(`Processing: ${inputPath}`);
     
     // 1. Load image
@@ -207,6 +319,21 @@ async function processImageFile(inputPath, outputBmp, outputThumb, options) {
     ctx = canvas.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     
+    // Convert device palette to array format if provided
+    let customPalette = null;
+    if (devicePalette) {
+        customPalette = [
+            [devicePalette.black.r, devicePalette.black.g, devicePalette.black.b],
+            [devicePalette.white.r, devicePalette.white.g, devicePalette.white.b],
+            [devicePalette.yellow.r, devicePalette.yellow.g, devicePalette.yellow.b],
+            [devicePalette.red.r, devicePalette.red.g, devicePalette.red.b],
+            [0, 0, 0], // Reserved
+            [devicePalette.blue.r, devicePalette.blue.g, devicePalette.blue.b],
+            [devicePalette.green.r, devicePalette.green.g, devicePalette.green.b]
+        ];
+        console.log(`  Using calibrated color palette from device`);
+    }
+    
     const params = {
         exposure: options.exposure,
         saturation: options.saturation,
@@ -218,7 +345,8 @@ async function processImageFile(inputPath, outputBmp, outputThumb, options) {
         midpoint: options.scurveMidpoint,
         colorMethod: options.colorMethod,
         renderMeasured: options.renderMeasured,
-        processingMode: options.processingMode
+        processingMode: options.processingMode,
+        customPalette: customPalette
     };
     
     if (params.processingMode === 'stock') {
@@ -290,9 +418,9 @@ program
     .name('photoframe-process')
     .description('ESP32 PhotoFrame image processing CLI')
     .version('1.0.0')
-    .argument('<input>', 'Input image file (JPEG/PNG)')
+    .argument('<input>', 'Input image file or directory with album subdirectories')
     .option('-o, --output-dir <dir>', 'Output directory', '.')
-    .option('--suffix <suffix>', 'Suffix to add to output filename', '')
+    .option('--suffix <suffix>', 'Suffix to add to output filename (single file mode only)', '')
     .option('--no-thumbnail', 'Skip thumbnail generation')
     .option('--device-parameters', 'Fetch processing parameters from device')
     .option('--device-host <host>', 'Device hostname or IP address (default: photoframe.local)', 'photoframe.local')
@@ -311,7 +439,7 @@ program
         try {
             const inputPath = path.resolve(input);
             if (!fs.existsSync(inputPath)) {
-                console.error(`Error: Input file not found: ${inputPath}`);
+                console.error(`Error: Input path not found: ${inputPath}`);
                 process.exit(1);
             }
             
@@ -322,19 +450,16 @@ program
             
             // Fetch device settings if --device-parameters is specified
             let deviceSettings = null;
+            let devicePalette = null;
             if (options.deviceParameters) {
                 try {
                     deviceSettings = await fetchDeviceSettings(options.deviceHost);
+                    devicePalette = await fetchDevicePalette(options.deviceHost);
                 } catch (error) {
                     console.error(`Error: ${error.message}`);
                     process.exit(1);
                 }
             }
-            
-            const baseName = path.basename(input, path.extname(input));
-            const suffix = options.suffix || '';
-            const outputBmp = path.join(outputDir, `${baseName}${suffix}.bmp`);
-            const outputThumb = options.thumbnail ? path.join(outputDir, `${baseName}${suffix}.jpg`) : null;
             
             // Use device settings if available, otherwise use CLI options
             const processOptions = deviceSettings ? {
@@ -365,9 +490,22 @@ program
                 processingMode: options.processingMode
             };
             
-            await processImageFile(inputPath, outputBmp, outputThumb, processOptions);
+            // Automatically detect if input is file or directory
+            const stats = fs.statSync(inputPath);
+            if (stats.isDirectory()) {
+                // Process folder structure (albums)
+                await processFolderStructure(inputPath, outputDir, processOptions, deviceSettings, devicePalette);
+            } else {
+                // Process single file
+                const baseName = path.basename(input, path.extname(input));
+                const suffix = options.suffix || '';
+                const outputBmp = path.join(outputDir, `${baseName}${suffix}.bmp`);
+                const outputThumb = options.thumbnail ? path.join(outputDir, `${baseName}${suffix}.jpg`) : null;
+                
+                await processImageFile(inputPath, outputBmp, outputThumb, processOptions, devicePalette);
+            }
         } catch (error) {
-            console.error(`Error processing image: ${error.message}`);
+            console.error(`Error processing: ${error.message}`);
             console.error(error.stack);
             process.exit(1);
         }
