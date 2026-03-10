@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from "vue";
 import { useAppStore, useSettingsStore } from "../stores";
+import ImageCrop from "./ImageCrop.vue";
 import ImageProcessing from "./ImageProcessing.vue";
 
 const appStore = useAppStore();
@@ -11,6 +12,7 @@ const uploading = ref(false);
 const uploadProgress = ref(0);
 const selectedFile = ref(null);
 const previewUrl = ref(null);
+const showCrop = ref(false);
 const showPreview = ref(false);
 const processedResult = ref(null);
 const sourceCanvas = ref(null);
@@ -67,18 +69,32 @@ async function processFile(file) {
 
   // Create preview URL
   previewUrl.value = URL.createObjectURL(file);
-  showPreview.value = true;
 
-  // Load image and create source canvas for upload processing
-  const img = await loadImage(file);
-  sourceCanvas.value = document.createElement("canvas");
-  sourceCanvas.value.width = img.width;
-  sourceCanvas.value.height = img.height;
-  const ctx = sourceCanvas.value.getContext("2d");
-  ctx.drawImage(img, 0, 0);
+  // Show the crop UI first so the user can select the region to display
+  showCrop.value = true;
+  showPreview.value = false;
 
-  // Switch to processing tab so user can adjust settings
+  // Switch to processing tab so settings are visible while the user crops
   settingsStore.activeSettingsTab = "processing";
+}
+
+/** Called when the user confirms a crop selection. */
+function onCropConfirmed(croppedCanvas) {
+  sourceCanvas.value = croppedCanvas;
+  showCrop.value = false;
+  showPreview.value = true;
+}
+
+/** Called when the user skips cropping – use the full image. */
+async function onCropSkipped() {
+  const img = await loadImage(selectedFile.value);
+  const canvas = document.createElement("canvas");
+  canvas.width = img.width;
+  canvas.height = img.height;
+  canvas.getContext("2d").drawImage(img, 0, 0);
+  sourceCanvas.value = canvas;
+  showCrop.value = false;
+  showPreview.value = true;
 }
 
 function loadImage(file) {
@@ -189,6 +205,7 @@ async function uploadImage(mode = "upload") {
 function resetUpload() {
   selectedFile.value = null;
   previewUrl.value = null;
+  showCrop.value = false;
   showPreview.value = false;
   sourceCanvas.value = null;
   if (fileInput.value) {
@@ -469,7 +486,7 @@ async function generateAiImage() {
 
       <!-- Upload Area -->
       <v-sheet
-        v-if="!showPreview"
+        v-if="!showPreview && !showCrop"
         class="upload-zone d-flex flex-column align-center justify-center pa-8"
         rounded
         border
@@ -491,12 +508,23 @@ async function generateAiImage() {
         </v-btn>
       </v-sheet>
 
+      <!-- Crop Area -->
+      <div v-else-if="showCrop">
+        <ImageCrop
+          :image-file="selectedFile"
+          @crop-confirmed="onCropConfirmed"
+          @skip="onCropSkipped"
+          @cancel="resetUpload"
+        />
+      </div>
+
       <!-- Preview Area with Processing -->
       <div v-else>
         <ImageProcessing
           :image-file="selectedFile"
           :params="settingsStore.params"
           :palette="settingsStore.palette"
+          :source-canvas-override="sourceCanvas"
           @processed="processedResult = $event"
         />
       </div>

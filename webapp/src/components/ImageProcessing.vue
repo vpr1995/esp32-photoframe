@@ -16,6 +16,10 @@ const props = defineProps({
     type: Object,
     default: null,
   },
+  sourceCanvasOverride: {
+    type: Object, // HTMLCanvasElement
+    default: null,
+  },
 });
 
 const emit = defineEmits(["processed"]);
@@ -85,8 +89,8 @@ onMounted(async () => {
     // Set effective palette for ToneCurve (use props.palette if provided, otherwise SPECTRA6.perceived)
     effectivePalette.value = props.palette || imageProcessor.SPECTRA6.perceived;
 
-    // Process if file was already set
-    if (props.imageFile) {
+    // Process using the override canvas if provided, otherwise from the image file
+    if (props.sourceCanvasOverride || props.imageFile) {
       await loadAndProcessImage(props.imageFile);
     }
   } catch (error) {
@@ -135,15 +139,20 @@ async function loadAndProcessImage(file) {
   processing.value = true;
 
   try {
-    // Load image with EXIF orientation applied
-    const img = await loadImage(file);
+    // Use the pre-cropped canvas override when available, otherwise load from file
+    if (props.sourceCanvasOverride) {
+      sourceCanvas = props.sourceCanvasOverride;
+    } else {
+      // Load image with EXIF orientation applied
+      const img = await loadImage(file);
 
-    // Create source canvas from loaded image
-    sourceCanvas = document.createElement("canvas");
-    sourceCanvas.width = img.width;
-    sourceCanvas.height = img.height;
-    const sourceCtx = sourceCanvas.getContext("2d");
-    sourceCtx.drawImage(img, 0, 0);
+      // Create source canvas from loaded image
+      sourceCanvas = document.createElement("canvas");
+      sourceCanvas.width = img.width;
+      sourceCanvas.height = img.height;
+      const sourceCtx = sourceCanvas.getContext("2d");
+      sourceCtx.drawImage(img, 0, 0);
+    }
 
     // Process and display
     await updatePreview();
